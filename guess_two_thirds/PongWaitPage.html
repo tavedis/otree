@@ -1,0 +1,176 @@
+{% extends "otree/WaitPage.html" %}
+
+{% block title %}Pong{% endblock %}
+
+{% block content %}
+  <p>
+    While we wait for everyone else, have fun with a quick game of Pong! This is simply for entertainment purposes, and has no influence on the outcome of the experiment. <br>
+    <strong>How to play:</strong> Move your mouse up and down inside the canvas to control the left paddle.
+    Try to bounce the ball past the computer’s paddle on the right to score points.<br>
+    <em>Press <strong>Space</strong> to pause/resume.</em>
+  </p>
+
+  <style>
+    /* center the canvas & black background */
+    #pongCanvas {
+      display: block;
+      margin: 0 auto;
+      background: #000;
+      border: 2px solid #fff;
+    }
+  </style>
+
+  <canvas id="pongCanvas" width="800" height="400" tabindex="0"></canvas>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const canvas = document.getElementById('pongCanvas');
+      const ctx = canvas.getContext('2d');
+
+      // --- Game state ---
+      const ball   = { x: 400, y: 200, r: 8, speed: 5, dx: 5, dy: 5 };
+      const paddleW = 10, paddleH = 80;
+      const user   = { x: 0,   y: 160, w: paddleW, h: paddleH, score: 0 };
+      const com    = { x: 790, y: 160, w: paddleW, h: paddleH, score: 0 };
+
+      // --- AI state ---
+      const ai = {
+        speed:    4,      // max pixels per frame
+        reaction: 200,    // ms between retargets
+        last:     Date.now(),
+        targetY:  200
+      };
+
+      // --- Pause flag ---
+      let paused = false;
+
+      // --- Draw helpers ---
+      function drawRect(x,y,w,h){ ctx.fillRect(x,y,w,h) }
+      function drawCircle(x,y,r){
+        ctx.beginPath();
+        ctx.arc(x,y,r,0,2*Math.PI);
+        ctx.fill();
+      }
+      function drawNet(){
+        ctx.fillStyle = '#fff';
+        for(let i = 0; i < 400; i += 20) {
+          drawRect(395, i, 2, 10);
+        }
+      }
+
+      // --- Reset ball after score ---
+      function resetBall(){
+        ball.x = 400;
+        ball.y = 200;
+        ball.dx = -ball.dx;
+        ball.dy = 5 * (Math.random() > 0.5 ? 1 : -1);
+        ball.speed = 5;
+      }
+
+      // --- Smarter AI update ---
+      function updateAI() {
+        const now = Date.now();
+        if (now - ai.last > ai.reaction) {
+          const frames = (com.x - ball.x) / ball.dx;
+          ai.targetY = ball.y + ball.dy * frames;
+          ai.last = now;
+        }
+        const center = com.y + com.h/2;
+        if (center < ai.targetY - ai.speed)      com.y += ai.speed;
+        else if (center > ai.targetY + ai.speed) com.y -= ai.speed;
+        com.y = Math.max(0, Math.min(400 - com.h, com.y));
+      }
+
+      // --- Main update (physics + scoring) ---
+      function update(){
+        ball.x += ball.dx;
+        ball.y += ball.dy;
+        // bounce off top/bottom
+        if (ball.y + ball.r > 400 || ball.y - ball.r < 0) {
+          ball.dy = -ball.dy;
+        }
+
+        // AI paddle move
+        updateAI();
+
+        // user paddle collision
+        if (
+          ball.x - ball.r < user.x + user.w &&
+          ball.y > user.y &&
+          ball.y < user.y + user.h
+        ) {
+          ball.dx = -ball.dx;
+          ball.speed += 0.5;
+        }
+        // com paddle collision
+        if (
+          ball.x + ball.r > com.x &&
+          ball.y > com.y &&
+          ball.y < com.y + com.h
+        ) {
+          ball.dx = -ball.dx;
+          ball.speed += 0.5;
+        }
+
+        // scoring
+        if (ball.x - ball.r < 0)   { com.score++; resetBall(); }
+        if (ball.x + ball.r > 800) { user.score++; resetBall(); }
+
+        // normalize velocity to current speed
+        const ang = Math.atan2(ball.dy, ball.dx);
+        ball.dx = ball.speed * Math.cos(ang);
+        ball.dy = ball.speed * Math.sin(ang);
+      }
+
+      // --- Draw everything ---
+      function render(){
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, 800, 400);
+        ctx.fillStyle = '#fff';
+        drawNet();
+        drawRect(user.x, user.y, user.w, user.h);
+        drawRect(com.x, com.y, com.w, com.h);
+        drawCircle(ball.x, ball.y, ball.r);
+
+        // scores
+        ctx.font = '32px sans-serif';
+        ctx.fillText(user.score, 200, 50);
+        ctx.fillText(com.score, 600, 50);
+      }
+
+      // --- Main loop with pause overlay ---
+      function loop(){
+        if (!paused) {
+          update();
+          render();
+        } else {
+          // draw paused overlay
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = '#fff';
+          ctx.font = '48px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('Paused', canvas.width/2, canvas.height/2);
+        }
+        requestAnimationFrame(loop);
+      }
+
+      // --- Mouse control for user paddle ---
+      canvas.addEventListener('mousemove', e => {
+        const rect = canvas.getBoundingClientRect();
+        user.y = e.clientY - rect.top - user.h/2;
+        user.y = Math.max(0, Math.min(400 - user.h, user.y));
+      });
+
+      // --- Spacebar toggles pause ---
+      document.addEventListener('keydown', e => {
+        if (e.code === 'Space') {
+          paused = !paused;
+        }
+      });
+
+      // Start the game loop
+      loop();
+    });
+  </script>
+{% endblock %}
